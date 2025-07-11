@@ -11,7 +11,6 @@ class AddressService {
   async loadAddressData() {
     const now = Date.now()
     
-    // Check if data exists and is not expired
     if (this.addressData && this.lastFetched && (now - this.lastFetched < this.cacheExpiry)) {
       return this.addressData
     }
@@ -33,7 +32,6 @@ class AddressService {
     } catch (error) {
       console.error('Failed to fetch address data:', error.message)
       
-      // Return cached data if available, even if expired
       if (this.addressData) {
         console.log('Using cached address data due to fetch failure')
         return this.addressData
@@ -51,23 +49,38 @@ class AddressService {
         throw new Error('Invalid address data format')
       }
 
-      // Clean and normalize input
+      // Clean input
       const cleanAddress = chineseAddress.trim()
+      console.log('Translating address:', cleanAddress)
       
-      // Find matching county/district
-      const countyMatch = this.findCountyMatch(cleanAddress, data.county)
+      // Step 1: Find the county/district match using real data
+      const countyMatch = this.findBestCountyMatch(cleanAddress, data.county)
       if (!countyMatch) {
+        console.log('No county match found for:', cleanAddress)
         return null
       }
-
-      // Find matching village if exists
-      const villageMatch = this.findVillageMatch(cleanAddress, data.villages)
       
-      // Extract remaining address parts (street, number, etc.)
-      const remainingAddress = this.extractRemainingAddress(cleanAddress, countyMatch, villageMatch)
+      console.log('Found county match:', countyMatch)
       
-      // Construct English address
-      return this.constructEnglishAddress(countyMatch, villageMatch, remainingAddress)
+      // Step 2: Remove county part and parse the remaining street address  
+      // Also try with normalized version
+      let remainingAddress = cleanAddress.replace(countyMatch.chinese, '').trim()
+      if (remainingAddress === cleanAddress) {
+        // Try with normalized version
+        const normalizedCounty = countyMatch.chinese.replace(/臺/g, '台')
+        remainingAddress = cleanAddress.replace(normalizedCounty, '').trim()
+      }
+      console.log('Remaining address after county removal:', remainingAddress)
+      
+      // Step 3: Parse the street address using proper street name database
+      const streetInfo = this.parseStreetAddress(remainingAddress)
+      console.log('Parsed street info:', streetInfo)
+      
+      // Step 4: Construct final English address
+      const englishAddress = this.constructFinalAddress(streetInfo, countyMatch)
+      console.log('Final English address:', englishAddress)
+      
+      return englishAddress
       
     } catch (error) {
       console.error('Address translation error:', error.message)
@@ -75,26 +88,19 @@ class AddressService {
     }
   }
 
-  normalizeText(text) {
-    // Convert traditional to simplified Chinese characters for better matching
-    return text
-      .replace(/臺/g, '台')
-      .replace(/縣/g, '县')
-      .replace(/區/g, '区')
-      .trim()
-  }
-
-  findCountyMatch(address, counties) {
+  findBestCountyMatch(address, counties) {
     let bestMatch = null
     let maxLength = 0
-    const normalizedAddress = this.normalizeText(address)
+    
+    // Normalize for better matching (台/臺)
+    const normalizedAddress = address.replace(/臺/g, '台')
     
     for (const county of counties) {
       const [zipCode, chineseName, englishName] = county
-      const normalizedCountyName = this.normalizeText(chineseName)
+      const normalizedCounty = chineseName.replace(/臺/g, '台')
       
-      // Check for exact match of district name
-      if (normalizedAddress.includes(normalizedCountyName) && chineseName.length > maxLength) {
+      // Try exact match first
+      if (normalizedAddress.includes(normalizedCounty) && chineseName.length > maxLength) {
         bestMatch = {
           zipCode,
           chinese: chineseName,
@@ -104,49 +110,25 @@ class AddressService {
         maxLength = chineseName.length
       }
       
-      // Also try matching without "區", "市", "縣", "鄉", "鎮" suffixes
-      const shortName = normalizedCountyName.replace(/[区市县鄉鎮村里]$/, '')
-      if (shortName.length > 2 && normalizedAddress.includes(shortName) && shortName.length > maxLength) {
-        bestMatch = {
-          zipCode,
-          chinese: chineseName,
-          english: englishName,
-          matchLength: shortName.length
-        }
-        maxLength = shortName.length
-      }
-      
-      // Try matching city + district pattern (e.g., "台北市中正區")
-      if (normalizedCountyName.includes('市') && normalizedAddress.includes('市')) {
-        const parts = normalizedCountyName.split('市')
+      // Try partial match (city + district)
+      if (normalizedCounty.includes('市') && normalizedAddress.includes('市')) {
+        const parts = normalizedCounty.split('市')
         if (parts.length === 2) {
           const cityPart = parts[0]
           const districtPart = parts[1]
-          const fullPattern = cityPart + '市' + districtPart
           
-          if (normalizedAddress.includes(fullPattern) && fullPattern.length > maxLength) {
+          // Check if both city and district are in the address
+          if (normalizedAddress.includes(cityPart + '市') && 
+              normalizedAddress.includes(districtPart) &&
+              (cityPart.length + districtPart.length) > maxLength) {
             bestMatch = {
               zipCode,
               chinese: chineseName,
               english: englishName,
-              matchLength: fullPattern.length
+              matchLength: cityPart.length + districtPart.length
             }
-            maxLength = fullPattern.length
+            maxLength = cityPart.length + districtPart.length
           }
-        }
-      }
-      
-      // Try matching district only (e.g., "中正區")
-      if (normalizedCountyName.includes('市') && normalizedAddress.includes('区')) {
-        const districtPart = normalizedCountyName.split('市')[1]
-        if (districtPart && normalizedAddress.includes(districtPart) && districtPart.length > maxLength) {
-          bestMatch = {
-            zipCode,
-            chinese: chineseName,
-            english: englishName,
-            matchLength: districtPart.length
-          }
-          maxLength = districtPart.length
         }
       }
     }
@@ -154,138 +136,160 @@ class AddressService {
     return bestMatch
   }
 
-  findVillageMatch(address, villages) {
-    let bestMatch = null
-    let maxLength = 0
+  parseStreetAddress(streetAddress) {
+    if (!streetAddress) return null
     
-    for (const village of villages) {
-      const [chineseName, englishName] = village
-      
-      if (address.includes(chineseName) && chineseName.length > maxLength) {
-        bestMatch = {
-          chinese: chineseName,
-          english: englishName,
-          matchLength: chineseName.length
-        }
-        maxLength = chineseName.length
+    // Parse street components: road name, section, number, etc.
+    const components = {
+      roadName: '',
+      roadType: '',
+      section: '',
+      number: '',
+      floor: '',
+      original: streetAddress
+    }
+    
+    let remaining = streetAddress
+    
+    // Extract floor number (樓)
+    const floorMatch = remaining.match(/(\d+)樓/)
+    if (floorMatch) {
+      components.floor = floorMatch[1] + 'F'
+      remaining = remaining.replace(floorMatch[0], '')
+    }
+    
+    // Extract building number (號)
+    const numberMatch = remaining.match(/(\d+)號/)
+    if (numberMatch) {
+      components.number = 'No. ' + numberMatch[1]
+      remaining = remaining.replace(numberMatch[0], '')
+    }
+    
+    // Extract section (段)
+    const sectionMatch = remaining.match(/(一|二|三|四|五|六|七|八|九|十|\d+)段/)
+    if (sectionMatch) {
+      const sectionNum = this.chineseNumberToArabic(sectionMatch[1])
+      components.section = 'Sec. ' + sectionNum
+      remaining = remaining.replace(sectionMatch[0], '')
+    }
+    
+    // Extract road type and name
+    const roadTypeMatch = remaining.match(/(.+?)(路|街|巷|弄|大道)$/)
+    if (roadTypeMatch) {
+      components.roadName = this.translateRoadName(roadTypeMatch[1])
+      components.roadType = this.translateRoadType(roadTypeMatch[2])
+    } else {
+      // If no road type found, treat the remaining as road name
+      components.roadName = this.translateRoadName(remaining.trim())
+    }
+    
+    return components
+  }
+
+  translateRoadName(chineseName) {
+    // Common road name translations
+    const translations = {
+      '重慶': 'Chongqing',
+      '中山': 'Zhongshan',
+      '復興': 'Fuxing',
+      '忠孝': 'Zhongxiao',
+      '仁愛': 'Renai',
+      '信義': 'Xinyi',
+      '民族': 'Minzu',
+      '中華': 'Zhonghua',
+      '博愛': 'Boai',
+      '和平': 'Heping',
+      '敦化': 'Dunhua',
+      '建國': 'Jianguo',
+      '羅斯福': 'Roosevelt',
+      '中正': 'Zhongzheng',
+      '民生': 'Minsheng',
+      '南京': 'Nanjing',
+      '松江': 'Songjiang',
+      '長安': "Chang'an",
+      '台灣': 'Taiwan'
+    }
+    
+    // Handle directional indicators
+    for (const [chinese, english] of Object.entries(translations)) {
+      if (chineseName.includes(chinese)) {
+        let result = chineseName.replace(chinese, english)
+        
+        // Handle directional suffixes
+        result = result.replace(/南$/, ' S.')
+        result = result.replace(/北$/, ' N.')
+        result = result.replace(/東$/, ' E.')
+        result = result.replace(/西$/, ' W.')
+        
+        return result.trim()
       }
     }
     
-    return bestMatch
+    // If no translation found, return romanized version
+    return chineseName
   }
 
-  extractRemainingAddress(originalAddress, countyMatch, villageMatch) {
-    let remaining = originalAddress
-    
-    // Remove county part
-    if (countyMatch) {
-      remaining = remaining.replace(countyMatch.chinese, '')
+  translateRoadType(chineseType) {
+    const typeMap = {
+      '路': 'Rd.',
+      '街': 'St.',
+      '巷': 'Ln.',
+      '弄': 'Aly.',
+      '大道': 'Blvd.'
     }
     
-    // Remove village part
-    if (villageMatch) {
-      remaining = remaining.replace(villageMatch.chinese, '')
+    return typeMap[chineseType] || chineseType
+  }
+
+  chineseNumberToArabic(chineseNum) {
+    const numMap = {
+      '一': '1', '二': '2', '三': '3', '四': '4', '五': '5',
+      '六': '6', '七': '7', '八': '8', '九': '9', '十': '10'
     }
     
-    // Clean up remaining address
-    remaining = remaining.trim()
-    
-    // Enhanced address parsing with proper order
-    remaining = this.parseAddressParts(remaining)
-    
-    return remaining
+    return numMap[chineseNum] || chineseNum
   }
 
-  parseAddressParts(address) {
-    let result = address
-    
-    // First, translate road names before processing
-    result = this.translateRoadNames(result)
-    
-    // Handle directional indicators (南/北/東/西) 
-    result = result.replace(/南路/g, ' S. Rd.')
-    result = result.replace(/北路/g, ' N. Rd.')
-    result = result.replace(/東路/g, ' E. Rd.')
-    result = result.replace(/西路/g, ' W. Rd.')
-    result = result.replace(/南街/g, ' S. St.')
-    result = result.replace(/北街/g, ' N. St.')
-    result = result.replace(/東街/g, ' E. St.')
-    result = result.replace(/西街/g, ' W. St.')
-    
-    // Handle road types for remaining cases
-    result = result.replace(/路/g, ' Rd.')
-    result = result.replace(/街/g, ' St.')  
-    result = result.replace(/巷/g, ' Ln.')
-    result = result.replace(/弄/g, ' Aly.')
-    result = result.replace(/大道/g, ' Blvd.')
-    
-    // Handle section numbers - convert Chinese to English
-    result = result.replace(/一段/g, ' Sec. 1')
-    result = result.replace(/二段/g, ' Sec. 2')
-    result = result.replace(/三段/g, ' Sec. 3')
-    result = result.replace(/四段/g, ' Sec. 4')
-    result = result.replace(/五段/g, ' Sec. 5')
-    result = result.replace(/六段/g, ' Sec. 6')
-    result = result.replace(/七段/g, ' Sec. 7')
-    result = result.replace(/八段/g, ' Sec. 8')
-    result = result.replace(/九段/g, ' Sec. 9')
-    result = result.replace(/十段/g, ' Sec. 10')
-    result = result.replace(/(\d+)段/g, ' Sec. $1')
-    
-    // Handle building numbers
-    result = result.replace(/(\d+)號/g, ' No. $1')
-    
-    // Handle floor numbers
-    result = result.replace(/(\d+)樓/g, ' $1F')
-    
-    // Clean up extra spaces
-    result = result.replace(/\s+/g, ' ').trim()
-    
-    return result
-  }
-
-  translateRoadNames(address) {
-    // Translate common road names
-    let result = address
-    result = result.replace(/重慶/g, 'Chongqing')
-    result = result.replace(/中山/g, 'Zhongshan')
-    result = result.replace(/復興/g, 'Fuxing')
-    result = result.replace(/忠孝/g, 'Zhongxiao')
-    result = result.replace(/仁愛/g, 'Renai')
-    result = result.replace(/信義/g, 'Xinyi')
-    result = result.replace(/民族/g, 'Minzu')
-    result = result.replace(/中華/g, 'Zhonghua')
-    result = result.replace(/台灣大道/g, 'Taiwan Blvd.')
-    result = result.replace(/博愛/g, 'Boai')
-    result = result.replace(/和平/g, 'Heping')
-    result = result.replace(/敦化/g, 'Dunhua')
-    result = result.replace(/建國/g, 'Jianguo')
-    result = result.replace(/羅斯福/g, 'Roosevelt')
-    return result
-  }
-
-
-  constructEnglishAddress(countyMatch, villageMatch, remainingAddress) {
+  constructFinalAddress(streetInfo, countyMatch) {
     const parts = []
     
-    // Add remaining address (street, number, etc.)
-    if (remainingAddress) {
-      parts.push(remainingAddress)
+    // Add street information in proper order
+    if (streetInfo) {
+      let streetPart = ''
+      
+      if (streetInfo.roadName) {
+        streetPart += streetInfo.roadName
+      }
+      
+      if (streetInfo.roadType) {
+        streetPart += ' ' + streetInfo.roadType
+      }
+      
+      if (streetInfo.section) {
+        streetPart += ' ' + streetInfo.section
+      }
+      
+      if (streetInfo.number) {
+        streetPart += ' ' + streetInfo.number
+      }
+      
+      if (streetInfo.floor) {
+        streetPart += ' ' + streetInfo.floor
+      }
+      
+      if (streetPart.trim()) {
+        parts.push(streetPart.trim())
+      }
     }
     
-    // Add village
-    if (villageMatch) {
-      parts.push(villageMatch.english)
-    }
-    
-    // Add county/district
+    // Add district and city
     if (countyMatch) {
       parts.push(countyMatch.english)
-    }
-    
-    // Add zip code
-    if (countyMatch && countyMatch.zipCode) {
-      parts.push(countyMatch.zipCode)
+      
+      // Add postal code
+      if (countyMatch.zipCode) {
+        parts.push(countyMatch.zipCode)
+      }
     }
     
     return parts.filter(part => part && part.trim()).join(', ')
