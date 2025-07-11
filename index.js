@@ -14,10 +14,26 @@ const client = new Client(config)
 const app = express()
 const PORT = process.env.PORT || 3000
 
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'LINE Address Bot is running!', 
+    timestamp: new Date().toISOString(),
+    env: {
+      hasChannelSecret: !!process.env.CHANNEL_SECRET,
+      hasChannelAccessToken: !!process.env.CHANNEL_ACCESS_TOKEN
+    }
+  })
+})
+
 // LINE webhook endpoint
 app.post('/webhook', middleware(config), (req, res) => {
+  console.log('Received webhook request:', req.body)
   Promise.all(req.body.events.map(handleEvent))
-    .then((result) => res.json(result))
+    .then((result) => {
+      console.log('Handler results:', result)
+      res.json(result)
+    })
     .catch((err) => {
       console.error('Error handling events:', err)
       res.status(500).end()
@@ -63,5 +79,10 @@ async function translateAddress(chineseAddress) {
 }
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
+  console.log(`🚀 LINE Address Bot server running on port ${PORT}`)
+  console.log(`📍 Health check: http://localhost:${PORT}`)
+  console.log(`📱 Webhook endpoint: http://localhost:${PORT}/webhook`)
+  console.log(`🔑 Channel Secret: ${config.channelSecret ? '✅ Set' : '❌ Missing'}`)
+  console.log(`🔑 Access Token: ${config.channelAccessToken ? '✅ Set' : '❌ Missing'}`)
 })
+
