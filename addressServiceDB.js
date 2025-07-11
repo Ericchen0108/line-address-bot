@@ -70,11 +70,21 @@ class AddressService {
       
       // Step 3.5: Translate road name using database
       if (streetInfo && streetInfo.roadName && streetInfo.roadType) {
-        // Try to find complete road name with road type first (for streets, lanes, etc.)
-        const fullRoadName = streetInfo.roadName + this.reverseTranslateRoadType(streetInfo.roadType) + (streetInfo.section ? this.arabicToChineseNumber(streetInfo.section.replace('Sec. ', '')) + '段' : '')
+        // Build complete road name with road type and section for database lookup
+        const roadTypeMap = { 'Rd.': '路', 'St.': '街', 'Ln.': '巷', 'Aly.': '弄', 'Blvd.': '大道' }
+        const chineseRoadType = roadTypeMap[streetInfo.roadType] || streetInfo.roadType
+        
+        let fullRoadName = streetInfo.roadName + chineseRoadType
+        if (streetInfo.section) {
+          const sectionNum = streetInfo.section.replace('Sec. ', '')
+          const chineseNumMap = { '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '9': '九', '10': '十' }
+          const chineseSection = chineseNumMap[sectionNum] || sectionNum
+          fullRoadName = streetInfo.roadName + chineseRoadType + chineseSection + '段'
+        }
+        
         console.log('Looking up road name:', fullRoadName)
         
-        // Try both simplified and traditional characters
+        // Try to find complete road name in database
         let roadMatch = await database.findRoadMatch(fullRoadName)
         if (!roadMatch) {
           const traditionalRoadName = fullRoadName.replace(/台/g, '臺')
@@ -209,18 +219,6 @@ class AddressService {
     return typeMap[chineseType] || chineseType
   }
 
-  reverseTranslateRoadType(englishType) {
-    // Common fallback for standard road types
-    const typeMap = {
-      'Rd.': '路',
-      'St.': '街',
-      'Ln.': '巷',
-      'Aly.': '弄',
-      'Blvd.': '大道'
-    }
-    
-    return typeMap[englishType] || englishType
-  }
 
   async translateComponents(chineseName) {
     // Try direct database lookup first (both simplified and traditional)
@@ -290,15 +288,6 @@ class AddressService {
     return numMap[chineseNum] || chineseNum
   }
 
-  arabicToChineseNumber(arabicNum) {
-    // Common fallback for standard numbers
-    const numMap = {
-      '1': '一', '2': '二', '3': '三', '4': '四', '5': '五',
-      '6': '六', '7': '七', '8': '八', '9': '九', '10': '十'
-    }
-    
-    return numMap[arabicNum] || arabicNum
-  }
 
   constructFinalAddress(streetInfo, countyMatch) {
     const parts = []

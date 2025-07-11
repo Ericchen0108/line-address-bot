@@ -38,19 +38,7 @@ const config = {
     level: process.env.LOG_LEVEL || 'info'
   },
   
-  // Development specific settings
-  isDevelopment: () => config.env === 'development',
-  isProduction: () => config.env === 'production',
-  isTest: () => config.env === 'test'
 }
 
-// Validation
-if (!config.line.channelSecret && !config.isTest()) {
-  console.warn('⚠️ CHANNEL_SECRET is not set')
-}
-
-if (!config.line.channelAccessToken && !config.isTest()) {
-  console.warn('⚠️ CHANNEL_ACCESS_TOKEN is not set')
-}
 
 export default config

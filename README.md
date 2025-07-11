@@ -187,7 +187,6 @@ railway variables set LOG_LEVEL=info
 ├── package.json         # 專案設定與腳本
 ├── railway.toml         # Railway 部署設定
 ├── Procfile             # Railway 啟動設定
-├── DEPLOYMENT.md        # 部署說明文件
 ├── .env.development     # 開發環境變數
 ├── .env.production      # 生產環境變數
 └── .gitignore           # Git 忽略檔案

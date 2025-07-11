@@ -15,13 +15,7 @@ const app = express()
 app.get('/', (req, res) => {
   res.json({ 
     message: 'LINE Address Bot is running!', 
-    timestamp: new Date().toISOString(),
-    environment: config.env,
-    version: '1.0.0',
-    env: {
-      hasChannelSecret: !!config.line.channelSecret,
-      hasChannelAccessToken: !!config.line.channelAccessToken
-    }
+    timestamp: new Date().toISOString()
   })
 })
 
@@ -80,10 +74,5 @@ async function translateAddress(chineseAddress) {
 app.listen(config.port, () => {
   console.log(`🚀 LINE Address Bot server running on port ${config.port}`)
   console.log(`🌍 Environment: ${config.env}`)
-  console.log(`📍 Health check: http://localhost:${config.port}`)
-  console.log(`📱 Webhook endpoint: http://localhost:${config.port}/webhook`)
-  console.log(`🗄️ Database: ${config.database.path}`)
-  console.log(`🔑 Channel Secret: ${config.line.channelSecret ? '✅ Set' : '❌ Missing'}`)
-  console.log(`🔑 Access Token: ${config.line.channelAccessToken ? '✅ Set' : '❌ Missing'}`)
 })
 
