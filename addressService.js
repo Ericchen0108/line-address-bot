@@ -190,19 +190,80 @@ class AddressService {
     // Clean up remaining address
     remaining = remaining.trim()
     
-    // Basic translation of common terms
-    remaining = remaining
-      .replace(/路/g, ' Rd.')
-      .replace(/街/g, ' St.')
-      .replace(/巷/g, ' Ln.')
-      .replace(/弄/g, ' Aly.')
-      .replace(/號/g, '')
-      .replace(/樓/g, 'F')
-      .replace(/段/g, ' Sec.')
-      .trim()
+    // Enhanced address parsing with proper order
+    remaining = this.parseAddressParts(remaining)
     
     return remaining
   }
+
+  parseAddressParts(address) {
+    let result = address
+    
+    // First, translate road names before processing
+    result = this.translateRoadNames(result)
+    
+    // Handle directional indicators (南/北/東/西) 
+    result = result.replace(/南路/g, ' S. Rd.')
+    result = result.replace(/北路/g, ' N. Rd.')
+    result = result.replace(/東路/g, ' E. Rd.')
+    result = result.replace(/西路/g, ' W. Rd.')
+    result = result.replace(/南街/g, ' S. St.')
+    result = result.replace(/北街/g, ' N. St.')
+    result = result.replace(/東街/g, ' E. St.')
+    result = result.replace(/西街/g, ' W. St.')
+    
+    // Handle road types for remaining cases
+    result = result.replace(/路/g, ' Rd.')
+    result = result.replace(/街/g, ' St.')  
+    result = result.replace(/巷/g, ' Ln.')
+    result = result.replace(/弄/g, ' Aly.')
+    result = result.replace(/大道/g, ' Blvd.')
+    
+    // Handle section numbers - convert Chinese to English
+    result = result.replace(/一段/g, ' Sec. 1')
+    result = result.replace(/二段/g, ' Sec. 2')
+    result = result.replace(/三段/g, ' Sec. 3')
+    result = result.replace(/四段/g, ' Sec. 4')
+    result = result.replace(/五段/g, ' Sec. 5')
+    result = result.replace(/六段/g, ' Sec. 6')
+    result = result.replace(/七段/g, ' Sec. 7')
+    result = result.replace(/八段/g, ' Sec. 8')
+    result = result.replace(/九段/g, ' Sec. 9')
+    result = result.replace(/十段/g, ' Sec. 10')
+    result = result.replace(/(\d+)段/g, ' Sec. $1')
+    
+    // Handle building numbers
+    result = result.replace(/(\d+)號/g, ' No. $1')
+    
+    // Handle floor numbers
+    result = result.replace(/(\d+)樓/g, ' $1F')
+    
+    // Clean up extra spaces
+    result = result.replace(/\s+/g, ' ').trim()
+    
+    return result
+  }
+
+  translateRoadNames(address) {
+    // Translate common road names
+    let result = address
+    result = result.replace(/重慶/g, 'Chongqing')
+    result = result.replace(/中山/g, 'Zhongshan')
+    result = result.replace(/復興/g, 'Fuxing')
+    result = result.replace(/忠孝/g, 'Zhongxiao')
+    result = result.replace(/仁愛/g, 'Renai')
+    result = result.replace(/信義/g, 'Xinyi')
+    result = result.replace(/民族/g, 'Minzu')
+    result = result.replace(/中華/g, 'Zhonghua')
+    result = result.replace(/台灣大道/g, 'Taiwan Blvd.')
+    result = result.replace(/博愛/g, 'Boai')
+    result = result.replace(/和平/g, 'Heping')
+    result = result.replace(/敦化/g, 'Dunhua')
+    result = result.replace(/建國/g, 'Jianguo')
+    result = result.replace(/羅斯福/g, 'Roosevelt')
+    return result
+  }
+
 
   constructEnglishAddress(countyMatch, villageMatch, remainingAddress) {
     const parts = []
