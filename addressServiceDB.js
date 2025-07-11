@@ -73,7 +73,13 @@ class AddressService {
         // Try to find complete road name with road type first (for streets, lanes, etc.)
         const fullRoadName = streetInfo.roadName + this.reverseTranslateRoadType(streetInfo.roadType) + (streetInfo.section ? this.arabicToChineseNumber(streetInfo.section.replace('Sec. ', '')) + '段' : '')
         console.log('Looking up road name:', fullRoadName)
-        const roadMatch = await database.findRoadMatch(fullRoadName)
+        
+        // Try both simplified and traditional characters
+        let roadMatch = await database.findRoadMatch(fullRoadName)
+        if (!roadMatch) {
+          const traditionalRoadName = fullRoadName.replace(/台/g, '臺')
+          roadMatch = await database.findRoadMatch(traditionalRoadName)
+        }
         
         if (roadMatch) {
           // Use the database result and remove the road type from it
@@ -186,30 +192,12 @@ class AddressService {
       return roadMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
     }
     
-    // Manual translation for common road names not in database
-    const translations = {
-      '台灣': 'Taiwan'
-    }
-    
-    let result = chineseName
-    
-    // Apply manual translations
-    for (const [chinese, english] of Object.entries(translations)) {
-      if (result.includes(chinese)) {
-        result = result.replace(chinese, english)
-      }
-    }
-    
-    // Convert directional indicators to English
-    result = result.replace(/南$/, ' S.')
-    result = result.replace(/北$/, ' N.')
-    result = result.replace(/東$/, ' E.')
-    result = result.replace(/西$/, ' W.')
-    
-    return result.trim()
+    // If no direct match, try component-based translation
+    return await this.translateComponents(chineseName)
   }
 
   translateRoadType(chineseType) {
+    // Standard road types - hardcoded for performance and reliability
     const typeMap = {
       '路': 'Rd.',
       '街': 'St.',
@@ -222,6 +210,7 @@ class AddressService {
   }
 
   reverseTranslateRoadType(englishType) {
+    // Common fallback for standard road types
     const typeMap = {
       'Rd.': '路',
       'St.': '街',
@@ -234,8 +223,17 @@ class AddressService {
   }
 
   async translateComponents(chineseName) {
-    // Try to break down into components and translate each part using database
-    // Common suffixes that might be separable
+    // Try direct database lookup first (both simplified and traditional)
+    let directMatch = await database.findRoadMatch(chineseName)
+    if (!directMatch) {
+      const traditionalName = chineseName.replace(/台/g, '臺')
+      directMatch = await database.findRoadMatch(traditionalName)
+    }
+    if (directMatch) {
+      return directMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
+    }
+    
+    // Component-based translation for specific patterns
     const suffixes = ['部落', '村', '里', '鄰']
     
     for (const suffix of suffixes) {
@@ -243,13 +241,39 @@ class AddressService {
         const prefix = chineseName.slice(0, -suffix.length)
         if (prefix) {
           // Try to translate the prefix using roads database
-          const prefixMatch = await database.findRoadMatch(prefix)
+          let prefixMatch = await database.findRoadMatch(prefix)
+          if (!prefixMatch) {
+            const traditionalPrefix = prefix.replace(/台/g, '臺')
+            prefixMatch = await database.findRoadMatch(traditionalPrefix)
+          }
+          
           if (prefixMatch) {
-            // For "漁人部落" -> "漁人" translates to "Yuren", return just that
             return prefixMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
           }
         }
       }
+    }
+    
+    // Hardcode common directional suffixes for performance
+    if (chineseName.endsWith('南')) {
+      const base = chineseName.slice(0, -1)
+      const baseTranslation = await this.translateComponents(base)
+      return baseTranslation !== base ? `${baseTranslation} S.` : chineseName
+    }
+    if (chineseName.endsWith('北')) {
+      const base = chineseName.slice(0, -1)
+      const baseTranslation = await this.translateComponents(base)
+      return baseTranslation !== base ? `${baseTranslation} N.` : chineseName
+    }
+    if (chineseName.endsWith('東')) {
+      const base = chineseName.slice(0, -1)
+      const baseTranslation = await this.translateComponents(base)
+      return baseTranslation !== base ? `${baseTranslation} E.` : chineseName
+    }
+    if (chineseName.endsWith('西')) {
+      const base = chineseName.slice(0, -1)
+      const baseTranslation = await this.translateComponents(base)
+      return baseTranslation !== base ? `${baseTranslation} W.` : chineseName
     }
     
     // If no component translation found, return original
@@ -257,6 +281,7 @@ class AddressService {
   }
 
   chineseNumberToArabic(chineseNum) {
+    // Standard numbers - hardcoded for performance and reliability
     const numMap = {
       '一': '1', '二': '2', '三': '3', '四': '4', '五': '5',
       '六': '6', '七': '7', '八': '8', '九': '9', '十': '10'
@@ -266,6 +291,7 @@ class AddressService {
   }
 
   arabicToChineseNumber(arabicNum) {
+    // Common fallback for standard numbers
     const numMap = {
       '1': '一', '2': '二', '3': '三', '4': '四', '5': '五',
       '6': '六', '7': '七', '8': '八', '9': '九', '10': '十'
