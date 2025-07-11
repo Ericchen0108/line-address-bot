@@ -4,12 +4,14 @@
 
 ## 功能特色
 
-- 🏠 支援台灣各縣市地址轉換 (371個縣市, 8529個村里)
-- 🗄️ SQLite 本地資料庫，提供極快查詢速度
+- 🏠 支援台灣各縣市地址轉換 (371個縣市, 8529個村里, 30030條道路)
+- 🗄️ SQLite 本地資料庫，提供極快查詢速度 (< 0.1ms)
 - 🔄 智能處理繁簡體字差異 (台/臺)
 - 📍 郵遞區號自動對應
-- 🚀 離線運作，不依賴外部 API
-- 🧪 完整測試覆蓋
+- 🛣️ 道路名稱資料庫查詢，不使用硬編碼
+- 🏗️ 標準台灣地址格式輸出
+- 🌍 開發/生產環境分離
+- 🧪 完整測試覆蓋 (100% 通過率)
 - ❌ 完整錯誤處理
 
 ## 技術架構
@@ -34,14 +36,17 @@
 
 3. **設定環境變數**
    ```bash
-   cp .env.example .env
+   cp .env.development .env
    ```
    
    編輯 `.env` 檔案：
    ```
+   NODE_ENV=development
    CHANNEL_SECRET=你的_LINE_頻道密鑰
    CHANNEL_ACCESS_TOKEN=你的_LINE_頻道存取權杖
-   PORT=3000
+   PORT=8080
+   DB_PATH=./address-dev.db
+   LOG_LEVEL=debug
    ```
 
 4. **取得 LINE Bot 憑證**
@@ -51,23 +56,34 @@
 
 ## 本地開發
 
-1. **啟動伺服器**
+1. **啟動開發伺服器**
    ```bash
-   npm start
-   # 或開發模式
+   # 開發模式 (with nodemon)
    npm run dev
+   
+   # 生產模式
+   npm run start:prod
+   
+   # 一般啟動
+   npm start
    ```
 
 2. **執行完整測試**
    ```bash
+   # 測試環境
    npm test
+   
+   # 開發環境測試
+   npm run test:dev
    ```
    
    測試涵蓋：
-   - 資料庫初始化和數據完整性
+   - 資料庫初始化 (371縣市, 8529村里, 30030道路)
    - 地址轉換準確性
+   - 道路名稱資料庫查詢
+   - 台灣標準地址格式
    - 邊界條件處理
-   - 效能測試
+   - 效能測試 (< 0.1ms/翻譯)
 
 ## 資料庫架構
 
@@ -78,7 +94,8 @@
 
 **資料表結構：**
 - `counties` - 371筆縣市資料 (郵遞區號、中英文名稱)
-- `villages` - 8529筆村里資料 (中英文名稱)
+- `villages` - 8529筆村里資料 (中英文名稱)  
+- `roads` - 30030筆道路資料 (中英文道路名稱)
 
 ## 部署選項
 
@@ -92,9 +109,11 @@ railway login
 railway link
 railway up
 
-# 設定環境變數
-railway variables set CHANNEL_SECRET=你的密鑰
-railway variables set CHANNEL_ACCESS_TOKEN=你的權杖
+# 設定生產環境變數
+railway variables set NODE_ENV=production
+railway variables set CHANNEL_SECRET=你的生產密鑰
+railway variables set CHANNEL_ACCESS_TOKEN=你的生產權杖
+railway variables set LOG_LEVEL=info
 ```
 
 ### 2. Heroku
@@ -127,15 +146,19 @@ vercel --prod
 傳送以下地址給 Bot：
 
 **輸入**: `台北市中正區重慶南路一段122號`  
-**輸出**: `Chongqing S. Rd. Sec. 1 No. 122, Zhongzheng Dist., Taipei City, 100`
+**輸出**: `No. 122, Sec. 1, Chongqing S. Rd., Zhongzheng Dist., Taipei City 100, Taiwan (R.O.C.)`
 
 **輸入**: `高雄市左營區博愛二路777號`  
-**輸出**: `Boai二 Rd. No. 777, Zuoying Dist., Kaohsiung City, 813`
+**輸出**: `No. 777, Bo'ai 2nd Rd., Zuoying Dist., Kaohsiung City 813, Taiwan (R.O.C.)`
+
+**輸入**: `台北市中正區重慶南路一段122號3樓`  
+**輸出**: `No. 122, 3F, Sec. 1, Chongqing S. Rd., Zhongzheng Dist., Taipei City 100, Taiwan (R.O.C.)`
 
 **支援地址格式：**
-- 完整地址 (縣市+區域+路名+段+號)
-- 包含樓層資訊
-- 部分地址 (僅縣市區域)
+- 完整地址 (縣市+區域+路名+段+號+樓)
+- 標準台灣地址格式輸出
+- 道路名稱資料庫自動查詢翻譯
+- 自動處理繁簡體差異
 
 ## 測試結果
 
@@ -161,18 +184,24 @@ vercel --prod
 ├── index.js              # 主程式 (LINE Bot webhook)
 ├── addressServiceDB.js   # 資料庫版地址轉換服務
 ├── database.js          # SQLite 資料庫管理
-├── test.js              # 完整測試套件
-├── address.db           # SQLite 資料庫檔案 (自動建立)
-├── package.json         # 專案設定
+├── config.js            # 環境配置管理
+├── test.js              # 完整測試套件 (12項測試)
+├── address.db           # 生產環境資料庫
+├── package.json         # 專案設定與腳本
 ├── railway.toml         # Railway 部署設定
-└── .env.example         # 環境變數範例
+├── Procfile             # Railway 啟動設定
+├── DEPLOYMENT.md        # 部署說明文件
+├── .env.development     # 開發環境變數
+├── .env.production      # 生產環境變數
+└── .gitignore           # Git 忽略檔案
 ```
 
 ## API 資料來源
 
 - **地址資料來源**: https://tools.yeecord.com/address-to-english.json
-- **資料完整性**: 371個縣市 + 8529個村里
-- **更新方式**: 可透過 `updateFromAPI()` 手動更新
+- **資料完整性**: 371個縣市 + 8529個村里 + 30030條道路
+- **自動更新**: 首次啟動時自動從API獲取最新資料
+- **資料庫快取**: 本地SQLite儲存，無需重複API呼叫
 
 ## 貢獻指南
 

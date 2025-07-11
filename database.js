@@ -1,12 +1,13 @@
 import sqlite3 from 'sqlite3'
 import { open } from 'sqlite'
 import axios from 'axios'
+import config from './config.js'
 
 class AddressDatabase {
   constructor() {
     this.db = null
-    this.dbPath = './address.db'
-    this.apiUrl = 'https://tools.yeecord.com/address-to-english.json'
+    this.dbPath = config.database.path
+    this.apiUrl = config.api.url
   }
 
   async init() {
@@ -59,6 +60,16 @@ class AddressDatabase {
       )
     `)
 
+    // Create roads table
+    await this.db.exec(`
+      CREATE TABLE IF NOT EXISTS roads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chinese_name TEXT NOT NULL,
+        english_name TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
     // Create indexes for better performance
     await this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_counties_normalized ON counties(normalized_name)
@@ -70,6 +81,10 @@ class AddressDatabase {
     
     await this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_villages_chinese ON villages(chinese_name)
+    `)
+    
+    await this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_roads_chinese ON roads(chinese_name)
     `)
 
     console.log('Database tables created successfully')
@@ -87,13 +102,14 @@ class AddressDatabase {
 
       const data = response.data
       
-      if (!data || !data.county || !data.villages) {
+      if (!data || !data.county || !data.villages || !data.roads) {
         throw new Error('Invalid API response format')
       }
 
       // Clear existing data
       await this.db.exec('DELETE FROM counties')
       await this.db.exec('DELETE FROM villages')
+      await this.db.exec('DELETE FROM roads')
 
       // Insert counties
       console.log(`Inserting ${data.county.length} counties...`)
@@ -123,12 +139,29 @@ class AddressDatabase {
       }
       await insertVillage.finalize()
 
+      // Insert roads
+      console.log(`Inserting ${data.roads.length} roads...`)
+      const insertRoad = await this.db.prepare(`
+        INSERT INTO roads (chinese_name, english_name)
+        VALUES (?, ?)
+      `)
+
+      for (const road of data.roads) {
+        const [chineseName, englishName] = road
+        // Skip the header row
+        if (chineseName !== '中文街路名稱') {
+          await insertRoad.run(chineseName, englishName)
+        }
+      }
+      await insertRoad.finalize()
+
       console.log('Database populated successfully')
       
       // Log statistics
       const countyCount = await this.db.get('SELECT COUNT(*) as count FROM counties')
       const villageCount = await this.db.get('SELECT COUNT(*) as count FROM villages')
-      console.log(`Database contains: ${countyCount.count} counties, ${villageCount.count} villages`)
+      const roadCount = await this.db.get('SELECT COUNT(*) as count FROM roads')
+      console.log(`Database contains: ${countyCount.count} counties, ${villageCount.count} villages, ${roadCount.count} roads`)
 
     } catch (error) {
       console.error('Failed to populate database from API:', error)
@@ -199,21 +232,21 @@ class AddressDatabase {
     }
   }
 
-  async findVillageMatch(address) {
+
+
+  async findRoadMatch(roadName) {
     try {
-      const village = await this.db.get(`
-        SELECT chinese_name, english_name, LENGTH(chinese_name) as match_length
-        FROM villages 
-        WHERE ? LIKE '%' || chinese_name || '%'
-        ORDER BY LENGTH(chinese_name) DESC
+      const road = await this.db.get(`
+        SELECT chinese_name, english_name
+        FROM roads 
+        WHERE chinese_name = ?
         LIMIT 1
-      `, [address])
+      `, [roadName])
       
-      if (village) {
+      if (road) {
         return {
-          chinese: village.chinese_name,
-          english: village.english_name,
-          matchLength: village.match_length
+          chinese: road.chinese_name,
+          english: road.english_name
         }
       }
       
@@ -224,25 +257,15 @@ class AddressDatabase {
     }
   }
 
-  async close() {
-    if (this.db) {
-      await this.db.close()
-      console.log('Database connection closed')
-    }
-  }
-
-  async updateFromAPI() {
-    console.log('Updating database from API...')
-    await this.populateFromAPI()
-  }
-
   async getStats() {
     const countyCount = await this.db.get('SELECT COUNT(*) as count FROM counties')
     const villageCount = await this.db.get('SELECT COUNT(*) as count FROM villages')
+    const roadCount = await this.db.get('SELECT COUNT(*) as count FROM roads')
     
     return {
       counties: countyCount.count,
-      villages: villageCount.count
+      villages: villageCount.count,
+      roads: roadCount.count
     }
   }
 }

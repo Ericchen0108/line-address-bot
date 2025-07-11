@@ -44,6 +44,29 @@ class AddressService {
       const streetInfo = this.parseStreetAddress(remainingAddress)
       console.log('Parsed street info:', streetInfo)
       
+      // Step 3.5: Translate road name using database
+      if (streetInfo && streetInfo.roadName) {
+        // Try to find complete road name with section first (keep original Chinese format)
+        const fullRoadName = streetInfo.roadName + '路' + (streetInfo.section ? this.arabicToChineseNumber(streetInfo.section.replace('Sec. ', '')) + '段' : '')
+        const roadMatch = await database.findRoadMatch(fullRoadName)
+        
+        if (roadMatch) {
+          // Use the database result and remove the road type from it
+          const englishName = roadMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
+          // Parse the English name to separate components
+          const englishParts = englishName.split(', ')
+          if (englishParts.length > 1 && englishParts[0].startsWith('Sec.')) {
+            streetInfo.section = englishParts[0]
+            streetInfo.roadName = englishParts[1]
+          } else {
+            streetInfo.roadName = englishName
+          }
+        } else {
+          // Fallback to manual translation
+          streetInfo.roadName = await this.translateRoadName(streetInfo.roadName)
+        }
+      }
+      
       // Step 4: Construct final English address
       const englishAddress = this.constructFinalAddress(streetInfo, countyMatch)
       console.log('Final English address:', englishAddress)
@@ -96,57 +119,33 @@ class AddressService {
     // Extract road type and name
     const roadTypeMatch = remaining.match(/(.+?)(路|街|巷|弄|大道)$/)
     if (roadTypeMatch) {
-      components.roadName = this.translateRoadName(roadTypeMatch[1])
+      components.roadName = roadTypeMatch[1]
       components.roadType = this.translateRoadType(roadTypeMatch[2])
     } else {
       // If no road type found, treat the remaining as road name
-      components.roadName = this.translateRoadName(remaining.trim())
+      components.roadName = remaining.trim()
     }
     
     return components
   }
 
-  translateRoadName(chineseName) {
-    // Common road name translations
-    const translations = {
-      '重慶': 'Chongqing',
-      '中山': 'Zhongshan',
-      '復興': 'Fuxing',
-      '忠孝': 'Zhongxiao',
-      '仁愛': 'Renai',
-      '信義': 'Xinyi',
-      '民族': 'Minzu',
-      '中華': 'Zhonghua',
-      '博愛': 'Boai',
-      '和平': 'Heping',
-      '敦化': 'Dunhua',
-      '建國': 'Jianguo',
-      '羅斯福': 'Roosevelt',
-      '中正': 'Zhongzheng',
-      '民生': 'Minsheng',
-      '南京': 'Nanjing',
-      '松江': 'Songjiang',
-      '長安': "Chang'an",
-      '台灣': 'Taiwan'
+  async translateRoadName(chineseName) {
+    // First try to find exact match in database
+    const roadMatch = await database.findRoadMatch(chineseName)
+    if (roadMatch) {
+      return roadMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
     }
     
-    // Handle directional indicators
-    for (const [chinese, english] of Object.entries(translations)) {
-      if (chineseName.includes(chinese)) {
-        let result = chineseName.replace(chinese, english)
-        
-        // Handle directional suffixes
-        result = result.replace(/南$/, ' S.')
-        result = result.replace(/北$/, ' N.')
-        result = result.replace(/東$/, ' E.')
-        result = result.replace(/西$/, ' W.')
-        
-        return result.trim()
-      }
-    }
+    // If no exact match, handle directional suffixes manually
+    let result = chineseName
     
-    // If no translation found, return romanized version
-    return chineseName
+    // Convert directional indicators to English
+    result = result.replace(/南$/, ' S.')
+    result = result.replace(/北$/, ' N.')
+    result = result.replace(/東$/, ' E.')
+    result = result.replace(/西$/, ' W.')
+    
+    return result.trim()
   }
 
   translateRoadType(chineseType) {
@@ -170,35 +169,48 @@ class AddressService {
     return numMap[chineseNum] || chineseNum
   }
 
+  arabicToChineseNumber(arabicNum) {
+    const numMap = {
+      '1': '一', '2': '二', '3': '三', '4': '四', '5': '五',
+      '6': '六', '7': '七', '8': '八', '9': '九', '10': '十'
+    }
+    
+    return numMap[arabicNum] || arabicNum
+  }
+
   constructFinalAddress(streetInfo, countyMatch) {
     const parts = []
     
-    // Add street information in proper order
+    // Taiwan standard format: No. X, Sec. Y, Road Name, District, City Postal Code, Taiwan (R.O.C.)
+    
     if (streetInfo) {
-      let streetPart = ''
+      // Build address components in correct order
+      const addressComponents = []
       
-      if (streetInfo.roadName) {
-        streetPart += streetInfo.roadName
-      }
-      
-      if (streetInfo.roadType) {
-        streetPart += ' ' + streetInfo.roadType
-      }
-      
-      if (streetInfo.section) {
-        streetPart += ' ' + streetInfo.section
-      }
-      
+      // 1. Building number first
       if (streetInfo.number) {
-        streetPart += ' ' + streetInfo.number
+        addressComponents.push(streetInfo.number)
       }
       
+      // 2. Floor information 
       if (streetInfo.floor) {
-        streetPart += ' ' + streetInfo.floor
+        addressComponents.push(streetInfo.floor)
       }
       
-      if (streetPart.trim()) {
-        parts.push(streetPart.trim())
+      // 3. Section
+      if (streetInfo.section) {
+        addressComponents.push(streetInfo.section)
+      }
+      
+      // 4. Road name and type
+      if (streetInfo.roadName && streetInfo.roadType) {
+        addressComponents.push(`${streetInfo.roadName} ${streetInfo.roadType}`)
+      } else if (streetInfo.roadName) {
+        addressComponents.push(streetInfo.roadName)
+      }
+      
+      if (addressComponents.length > 0) {
+        parts.push(addressComponents.join(', '))
       }
     }
     
@@ -206,11 +218,20 @@ class AddressService {
     if (countyMatch) {
       parts.push(countyMatch.english)
       
-      // Add postal code
+      // Add postal code without comma
       if (countyMatch.zipCode) {
-        parts.push(countyMatch.zipCode)
+        // Combine last part with postal code
+        if (parts.length > 0) {
+          const lastPart = parts.pop()
+          parts.push(`${lastPart} ${countyMatch.zipCode}`)
+        } else {
+          parts.push(countyMatch.zipCode)
+        }
       }
     }
+    
+    // Add Taiwan (R.O.C.) at the end
+    parts.push('Taiwan (R.O.C.)')
     
     return parts.filter(part => part && part.trim()).join(', ')
   }
@@ -220,10 +241,6 @@ class AddressService {
     return await database.getStats()
   }
 
-  async updateDatabase() {
-    await this.init()
-    await database.updateFromAPI()
-  }
 }
 
 export default new AddressService()

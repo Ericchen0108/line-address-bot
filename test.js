@@ -49,30 +49,30 @@ class TestSuite {
     await this.runTest('Address Service Initialization', async () => {
       await addressService.init()
       const stats = await addressService.getStats()
-      return stats.counties === 371 && stats.villages === 8529
+      return stats.counties === 371 && stats.villages === 8529 && stats.roads > 30000
     })
 
     // Translation accuracy tests
     const testCases = [
       {
         input: '台北市中正區重慶南路一段122號',
-        expected: 'Chongqing S. Rd. Sec. 1 No. 122, Zhongzheng Dist., Taipei City, 100'
+        expected: 'No. 122, Sec. 1, Chongqing S. Rd., Zhongzheng Dist., Taipei City 100, Taiwan (R.O.C.)'
       },
       {
         input: '高雄市左營區博愛二路777號', 
-        expectedParts: ['Boai', 'Rd.', 'No. 777', 'Zuoying Dist., Kaohsiung City', '813']
+        expectedParts: ['No. 777', "Bo'ai 2nd Rd.", 'Zuoying Dist., Kaohsiung City', '813', 'Taiwan (R.O.C.)']
       },
       {
         input: '台中市西屯區台灣大道三段99號',
-        expectedParts: ['Taiwan', 'Blvd.', 'Sec. 3', 'No. 99', 'Xitun Dist., Taichung City', '407']
+        expectedParts: ['No. 99', 'Sec. 3', 'Taiwan', 'Blvd.', 'Xitun Dist., Taichung City', '407', 'Taiwan (R.O.C.)']
       },
       {
         input: '新北市板橋區中山路一段161號',
-        expectedParts: ['Zhongshan', 'Rd.', 'Sec. 1', 'No. 161', 'Banqiao Dist., New Taipei City', '220']
+        expectedParts: ['No. 161', 'Sec. 1', 'Zhongshan', 'Rd.', 'Banqiao Dist., New Taipei City', '220', 'Taiwan (R.O.C.)']
       },
       {
         input: '台南市中西區民族路二段76號',
-        expectedParts: ['Minzu', 'Rd.', 'Sec. 2', 'No. 76', 'West Central Dist., Tainan City', '700']
+        expectedParts: ['No. 76', 'Sec. 2', 'Minzu', 'Rd.', 'West Central Dist., Tainan City', '700', 'Taiwan (R.O.C.)']
       }
     ]
 
@@ -108,7 +108,7 @@ class TestSuite {
 
     await this.runTest('Special Characters Handling', async () => {
       const result = await addressService.translateAddress('台北市中正區重慶南路一段122號3樓')
-      return result && result.includes('3F')
+      return result && result.includes('3F') && result.includes('Taiwan (R.O.C.)')
     })
 
     // Performance test

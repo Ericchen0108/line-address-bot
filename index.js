@@ -1,33 +1,32 @@
 import express from 'express'
 import { middleware, Client } from '@line/bot-sdk'
-import dotenv from 'dotenv'
+import config from './config.js'
 import addressService from './addressServiceDB.js'
 
-dotenv.config()
-
-const config = {
-  channelSecret: process.env.CHANNEL_SECRET,
-  channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN
+const lineConfig = {
+  channelSecret: config.line.channelSecret,
+  channelAccessToken: config.line.channelAccessToken
 }
 
-const client = new Client(config)
+const client = new Client(lineConfig)
 const app = express()
-const PORT = process.env.PORT || 8080
 
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({ 
     message: 'LINE Address Bot is running!', 
     timestamp: new Date().toISOString(),
+    environment: config.env,
+    version: '1.0.0',
     env: {
-      hasChannelSecret: !!process.env.CHANNEL_SECRET,
-      hasChannelAccessToken: !!process.env.CHANNEL_ACCESS_TOKEN
+      hasChannelSecret: !!config.line.channelSecret,
+      hasChannelAccessToken: !!config.line.channelAccessToken
     }
   })
 })
 
 // LINE webhook endpoint
-app.post('/webhook', middleware(config), (req, res) => {
+app.post('/webhook', middleware(lineConfig), (req, res) => {
   console.log('Received webhook request:', req.body)
   Promise.all(req.body.events.map(handleEvent))
     .then((result) => {
@@ -78,11 +77,13 @@ async function translateAddress(chineseAddress) {
   }
 }
 
-app.listen(PORT, () => {
-  console.log(`🚀 LINE Address Bot server running on port ${PORT}`)
-  console.log(`📍 Health check: http://localhost:${PORT}`)
-  console.log(`📱 Webhook endpoint: http://localhost:${PORT}/webhook`)
-  console.log(`🔑 Channel Secret: ${config.channelSecret ? '✅ Set' : '❌ Missing'}`)
-  console.log(`🔑 Access Token: ${config.channelAccessToken ? '✅ Set' : '❌ Missing'}`)
+app.listen(config.port, () => {
+  console.log(`🚀 LINE Address Bot server running on port ${config.port}`)
+  console.log(`🌍 Environment: ${config.env}`)
+  console.log(`📍 Health check: http://localhost:${config.port}`)
+  console.log(`📱 Webhook endpoint: http://localhost:${config.port}/webhook`)
+  console.log(`🗄️ Database: ${config.database.path}`)
+  console.log(`🔑 Channel Secret: ${config.line.channelSecret ? '✅ Set' : '❌ Missing'}`)
+  console.log(`🔑 Access Token: ${config.line.channelAccessToken ? '✅ Set' : '❌ Missing'}`)
 })
 
