@@ -12,7 +12,7 @@ const config = {
 
 const client = new Client(config)
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 8080
 
 // Health check endpoint
 app.get('/', (req, res) => {
