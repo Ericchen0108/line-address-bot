@@ -73,6 +73,10 @@ class TestSuite {
       {
         input: '台南市中西區民族路二段76號',
         expectedParts: ['No. 76', 'Sec. 2', 'Minzu', 'Rd.', 'West Central Dist., Tainan City', '700', 'Taiwan (R.O.C.)']
+      },
+      {
+        input: '台中市大里區瑞城二街52巷12弄26號',
+        expectedParts: ['No. 26', 'Aly. 12', 'Ln. 52', 'Ruicheng 2nd St.', 'Dali Dist., Taichung City', '412', 'Taiwan (R.O.C.)']
       }
     ]
 
@@ -106,9 +110,20 @@ class TestSuite {
       return result === null
     })
 
-    await this.runTest('Special Characters Handling', async () => {
+    await this.runTest('Special Characters Handling (Floor)', async () => {
       const result = await addressService.translateAddress('台北市中正區重慶南路一段122號3樓')
       return result && result.includes('3F') && result.includes('Taiwan (R.O.C.)')
+    })
+
+    await this.runTest('Hierarchical Address Handling (Street/Lane/Alley)', async () => {
+      const result = await addressService.translateAddress('台中市大里區瑞城二街52巷12弄26號')
+      const expectedParts = ['No. 26', 'Aly. 12', 'Ln. 52', 'Ruicheng 2nd St.']
+      return expectedParts.every(part => result.includes(part))
+    })
+
+    await this.runTest('Complex Address with Room and Floor', async () => {
+      const result = await addressService.translateAddress('台北市信義區信義路五段7號3樓301室')
+      return result && result.includes('No. 7') && result.includes('3F') && result.includes('Rm. 301') && result.includes('Taiwan (R.O.C.)')
     })
 
     // Performance test

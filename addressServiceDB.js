@@ -45,14 +45,16 @@ class AddressService {
       console.log('Parsed street info:', streetInfo)
       
       // Step 3.5: Translate road name using database
-      if (streetInfo && streetInfo.roadName) {
-        // Try to find complete road name with section first (keep original Chinese format)
-        const fullRoadName = streetInfo.roadName + '路' + (streetInfo.section ? this.arabicToChineseNumber(streetInfo.section.replace('Sec. ', '')) + '段' : '')
+      if (streetInfo && streetInfo.roadName && streetInfo.roadType) {
+        // Try to find complete road name with road type first (for streets, lanes, etc.)
+        const fullRoadName = streetInfo.roadName + this.reverseTranslateRoadType(streetInfo.roadType) + (streetInfo.section ? this.arabicToChineseNumber(streetInfo.section.replace('Sec. ', '')) + '段' : '')
+        console.log('Looking up road name:', fullRoadName)
         const roadMatch = await database.findRoadMatch(fullRoadName)
         
         if (roadMatch) {
           // Use the database result and remove the road type from it
           const englishName = roadMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
+          console.log('Found road translation:', englishName)
           // Parse the English name to separate components
           const englishParts = englishName.split(', ')
           if (englishParts.length > 1 && englishParts[0].startsWith('Sec.')) {
@@ -82,17 +84,27 @@ class AddressService {
   parseStreetAddress(streetAddress) {
     if (!streetAddress) return null
     
-    // Parse street components: road name, section, number, etc.
+    // Parse street components with hierarchical structure
     const components = {
       roadName: '',
       roadType: '',
       section: '',
+      laneNumber: '',
+      alleyNumber: '',
       number: '',
       floor: '',
+      room: '',
       original: streetAddress
     }
     
     let remaining = streetAddress
+    
+    // Extract room number (室)
+    const roomMatch = remaining.match(/(\d+)室/)
+    if (roomMatch) {
+      components.room = 'Rm. ' + roomMatch[1]
+      remaining = remaining.replace(roomMatch[0], '')
+    }
     
     // Extract floor number (樓)
     const floorMatch = remaining.match(/(\d+)樓/)
@@ -106,6 +118,20 @@ class AddressService {
     if (numberMatch) {
       components.number = 'No. ' + numberMatch[1]
       remaining = remaining.replace(numberMatch[0], '')
+    }
+    
+    // Extract alley number (弄)
+    const alleyMatch = remaining.match(/(\d+)弄/)
+    if (alleyMatch) {
+      components.alleyNumber = 'Aly. ' + alleyMatch[1]
+      remaining = remaining.replace(alleyMatch[0], '')
+    }
+    
+    // Extract lane number (巷)
+    const laneMatch = remaining.match(/(\d+)巷/)
+    if (laneMatch) {
+      components.laneNumber = 'Ln. ' + laneMatch[1]
+      remaining = remaining.replace(laneMatch[0], '')
     }
     
     // Extract section (段)
@@ -160,6 +186,18 @@ class AddressService {
     return typeMap[chineseType] || chineseType
   }
 
+  reverseTranslateRoadType(englishType) {
+    const typeMap = {
+      'Rd.': '路',
+      'St.': '街',
+      'Ln.': '巷',
+      'Aly.': '弄',
+      'Blvd.': '大道'
+    }
+    
+    return typeMap[englishType] || englishType
+  }
+
   chineseNumberToArabic(chineseNum) {
     const numMap = {
       '一': '1', '二': '2', '三': '3', '四': '4', '五': '5',
@@ -181,10 +219,10 @@ class AddressService {
   constructFinalAddress(streetInfo, countyMatch) {
     const parts = []
     
-    // Taiwan standard format: No. X, Sec. Y, Road Name, District, City Postal Code, Taiwan (R.O.C.)
+    // Taiwan standard hierarchical format: No. X, Rm. Y, ZF, Aly. A, Ln. B, Sec. C, Road Name, District, City Postal Code, Taiwan (R.O.C.)
     
     if (streetInfo) {
-      // Build address components in correct order
+      // Build address components in correct hierarchical order
       const addressComponents = []
       
       // 1. Building number first
@@ -192,17 +230,32 @@ class AddressService {
         addressComponents.push(streetInfo.number)
       }
       
-      // 2. Floor information 
+      // 2. Room number
+      if (streetInfo.room) {
+        addressComponents.push(streetInfo.room)
+      }
+      
+      // 3. Floor information 
       if (streetInfo.floor) {
         addressComponents.push(streetInfo.floor)
       }
       
-      // 3. Section
+      // 4. Alley number (弄)
+      if (streetInfo.alleyNumber) {
+        addressComponents.push(streetInfo.alleyNumber)
+      }
+      
+      // 5. Lane number (巷)
+      if (streetInfo.laneNumber) {
+        addressComponents.push(streetInfo.laneNumber)
+      }
+      
+      // 6. Section
       if (streetInfo.section) {
         addressComponents.push(streetInfo.section)
       }
       
-      // 4. Road name and type
+      // 7. Road name and type
       if (streetInfo.roadName && streetInfo.roadType) {
         addressComponents.push(`${streetInfo.roadName} ${streetInfo.roadType}`)
       } else if (streetInfo.roadName) {
