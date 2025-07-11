@@ -1,7 +1,7 @@
 import express from 'express'
 import { middleware, Client } from '@line/bot-sdk'
 import dotenv from 'dotenv'
-import addressService from './addressService.js'
+import addressService from './addressServiceDB.js'
 
 dotenv.config()
 
