@@ -44,6 +44,30 @@ class AddressService {
       const streetInfo = this.parseStreetAddress(remainingAddress)
       console.log('Parsed street info:', streetInfo)
       
+      // Step 3.1: Handle village translations  
+      if (streetInfo && streetInfo.roadName) {
+        const villageMatch = await database.findVillageMatch(streetInfo.roadName)
+        if (villageMatch) {
+          // Extract village and remaining parts
+          const villagePart = villageMatch.english
+          let remaining = streetInfo.roadName.replace(villageMatch.chinese, '').trim()
+          
+          // Try to translate remaining part using road database or component-based translation
+          if (remaining) {
+            let remainingTranslated = await this.translateRoadName(remaining)
+            
+            // If no direct translation found, try component-based translation
+            if (remainingTranslated === remaining) {
+              remainingTranslated = await this.translateComponents(remaining)
+            }
+            
+            streetInfo.roadName = `${remainingTranslated}, ${villagePart}`
+          } else {
+            streetInfo.roadName = villagePart
+          }
+        }
+      }
+      
       // Step 3.5: Translate road name using database
       if (streetInfo && streetInfo.roadName && streetInfo.roadType) {
         // Try to find complete road name with road type first (for streets, lanes, etc.)
@@ -99,17 +123,17 @@ class AddressService {
     
     let remaining = streetAddress
     
-    // Extract room number (室)
-    const roomMatch = remaining.match(/(\d+)室/)
+    // Extract room number (室) - handle both "X室" and "之X室"
+    const roomMatch = remaining.match(/(之)?(\d+)室/)
     if (roomMatch) {
-      components.room = 'Rm. ' + roomMatch[1]
+      components.room = 'Rm. ' + roomMatch[2]
       remaining = remaining.replace(roomMatch[0], '')
     }
     
     // Extract floor number (樓)
     const floorMatch = remaining.match(/(\d+)樓/)
     if (floorMatch) {
-      components.floor = floorMatch[1] + 'F'
+      components.floor = floorMatch[1] + 'F.'
       remaining = remaining.replace(floorMatch[0], '')
     }
     
@@ -162,8 +186,19 @@ class AddressService {
       return roadMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
     }
     
-    // If no exact match, handle directional suffixes manually
+    // Manual translation for common road names not in database
+    const translations = {
+      '台灣': 'Taiwan'
+    }
+    
     let result = chineseName
+    
+    // Apply manual translations
+    for (const [chinese, english] of Object.entries(translations)) {
+      if (result.includes(chinese)) {
+        result = result.replace(chinese, english)
+      }
+    }
     
     // Convert directional indicators to English
     result = result.replace(/南$/, ' S.')
@@ -198,6 +233,29 @@ class AddressService {
     return typeMap[englishType] || englishType
   }
 
+  async translateComponents(chineseName) {
+    // Try to break down into components and translate each part using database
+    // Common suffixes that might be separable
+    const suffixes = ['部落', '村', '里', '鄰']
+    
+    for (const suffix of suffixes) {
+      if (chineseName.endsWith(suffix)) {
+        const prefix = chineseName.slice(0, -suffix.length)
+        if (prefix) {
+          // Try to translate the prefix using roads database
+          const prefixMatch = await database.findRoadMatch(prefix)
+          if (prefixMatch) {
+            // For "漁人部落" -> "漁人" translates to "Yuren", return just that
+            return prefixMatch.english.replace(/\s(Rd\.|St\.|Ln\.|Aly\.|Blvd\.)$/, '').trim()
+          }
+        }
+      }
+    }
+    
+    // If no component translation found, return original
+    return chineseName
+  }
+
   chineseNumberToArabic(chineseNum) {
     const numMap = {
       '一': '1', '二': '2', '三': '3', '四': '4', '五': '5',
@@ -225,29 +283,29 @@ class AddressService {
       // Build address components in correct hierarchical order
       const addressComponents = []
       
-      // 1. Building number first
-      if (streetInfo.number) {
-        addressComponents.push(streetInfo.number)
-      }
-      
-      // 2. Room number
+      // 1. Room number first (if exists)
       if (streetInfo.room) {
         addressComponents.push(streetInfo.room)
       }
       
-      // 3. Floor information 
+      // 2. Floor information 
       if (streetInfo.floor) {
         addressComponents.push(streetInfo.floor)
       }
       
-      // 4. Alley number (弄)
-      if (streetInfo.alleyNumber) {
-        addressComponents.push(streetInfo.alleyNumber)
+      // 3. Building number
+      if (streetInfo.number) {
+        addressComponents.push(streetInfo.number)
       }
       
-      // 5. Lane number (巷)
+      // 4. Lane number (巷) - comes before alley in expected format
       if (streetInfo.laneNumber) {
         addressComponents.push(streetInfo.laneNumber)
+      }
+      
+      // 5. Alley number (弄)
+      if (streetInfo.alleyNumber) {
+        addressComponents.push(streetInfo.alleyNumber)
       }
       
       // 6. Section

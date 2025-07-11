@@ -257,6 +257,31 @@ class AddressDatabase {
     }
   }
 
+  async findVillageMatch(address) {
+    try {
+      const village = await this.db.get(`
+        SELECT chinese_name, english_name, LENGTH(chinese_name) as match_length
+        FROM villages 
+        WHERE ? LIKE '%' || chinese_name || '%'
+        ORDER BY LENGTH(chinese_name) DESC
+        LIMIT 1
+      `, [address])
+      
+      if (village) {
+        return {
+          chinese: village.chinese_name,
+          english: village.english_name,
+          matchLength: village.match_length
+        }
+      }
+      
+      return null
+    } catch (error) {
+      console.error('Database query error:', error)
+      throw error
+    }
+  }
+
   async getStats() {
     const countyCount = await this.db.get('SELECT COUNT(*) as count FROM counties')
     const villageCount = await this.db.get('SELECT COUNT(*) as count FROM villages')

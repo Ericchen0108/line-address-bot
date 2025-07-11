@@ -77,6 +77,47 @@ class TestSuite {
       {
         input: '台中市大里區瑞城二街52巷12弄26號',
         expectedParts: ['No. 26', 'Aly. 12', 'Ln. 52', 'Ruicheng 2nd St.', 'Dali Dist., Taichung City', '412', 'Taiwan (R.O.C.)']
+      },
+      // Test cases from test.txt with expected answers
+      {
+        input: '台北市信義區忠孝東路五段297號3樓8室',
+        expected: 'Rm. 8, 3F., No. 297, Sec. 5, Zhongxiao E. Rd., Xinyi Dist., Taipei City 110, Taiwan (R.O.C.)'
+      },
+      {
+        input: '台北市大安區新生南路三段23巷1弄1號',
+        expectedParts: ['No. 1', 'Ln. 23', 'Aly. 1', 'Sec. 3', 'Xinsheng S. Rd.', 'Taipei City', '106', 'Taiwan (R.O.C.)']
+      },
+      {
+        input: '新北市板橋區文化路一段21巷11號5樓',
+        expected: '5F., No. 11, Ln. 21, Sec. 1, Wenhua Rd., Banqiao Dist., New Taipei City 220, Taiwan (R.O.C.)'
+      },
+      {
+        input: '新北市新店區北宜路二段1000號',
+        expected: 'No. 1000, Sec. 2, Beiyi Rd., Xindian Dist., New Taipei City 231, Taiwan (R.O.C.)'
+      },
+      {
+        input: '新北市貢寮區龍洞街189號2樓1室',
+        expected: 'Rm. 1, 2F., No. 189, Longdong St., Gongliao Dist., New Taipei City 228, Taiwan (R.O.C.)'
+      },
+      {
+        input: '桃園市中壢區中山路1234號',
+        expected: 'No. 1234, Zhongshan Rd., Zhongli Dist., Taoyuan City 320, Taiwan (R.O.C.)'
+      },
+      {
+        input: '台中市西屯區台灣大道三段777號',
+        expected: 'No. 777, Sec. 3, Taiwan Blvd., Xitun Dist., Taichung City 407, Taiwan (R.O.C.)'
+      },
+      {
+        input: '台南市安平區古堡街100巷10弄1號',
+        expected: 'No. 1, Ln. 100, Aly. 10, Gubao St., Anping Dist., Tainan City 708, Taiwan (R.O.C.)'
+      },
+      {
+        input: '宜蘭縣羅東鎮公園路1號',
+        expected: 'No. 1, Gongyuan Rd., Luodong Township, Yilan County 265, Taiwan (R.O.C.)'
+      },
+      {
+        input: '台東縣蘭嶼鄉椰油村漁人部落31號',
+        expected: 'No. 31, Yuren, Yeyou Vil., Lanyu Township, Taitung County 952, Taiwan (R.O.C.)'
       }
     ]
 
